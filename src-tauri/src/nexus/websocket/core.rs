@@ -103,5 +103,5 @@ struct Command {
     #[serde(rename = "Name")]
     name: String,
     #[serde(rename = "Payload")]
-    payload: Option<HashMap<String, String>>,
+    payload: Option<HashMap<String, serde_json::Value>>,
 }

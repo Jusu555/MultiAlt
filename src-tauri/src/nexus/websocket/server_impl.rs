@@ -195,7 +195,7 @@ impl NexusServer {
                 }
             }
             "Log" => {
-                if let Some(content) = payload.get("Content") {
+                if let Some(content) = payload_text(&payload, "Content") {
                     self.log_messages.lock().unwrap().push(content.clone());
                     if let Some(app) = app {
                         let _ = app.emit("nexus-log", serde_json::json!({ "message": content }));
@@ -203,8 +203,8 @@ impl NexusServer {
                 }
             }
             "GetText" => {
-                if let Some(name) = payload.get("Name") {
-                    let text = self.get_element_text(name);
+                if let Some(name) = payload_text(&payload, "Name") {
+                    let text = self.get_element_text(&name);
                     let conns = self.connections.lock().unwrap();
                     if let Some(conn) = conns.get(username) {
                         let _ = conn.sender.send(format!("ElementText:{}", text));
@@ -212,7 +212,9 @@ impl NexusServer {
                 }
             }
             "SetRelaunch" => {
-                if let Some(seconds) = payload.get("Seconds").and_then(|s| s.parse::<f64>().ok()) {
+                if let Some(seconds) =
+                    payload_text(&payload, "Seconds").and_then(|s| s.parse::<f64>().ok())
+                {
                     let mut accounts = self.accounts.lock().unwrap();
                     if let Some(account) = accounts.iter_mut().find(|a| a.username == username) {
                         account.relaunch_delay = seconds;
@@ -222,7 +224,9 @@ impl NexusServer {
                 }
             }
             "SetAutoRelaunch" => {
-                if let Some(val) = payload.get("Content").and_then(|s| s.parse::<bool>().ok()) {
+                if let Some(val) =
+                    payload_text(&payload, "Content").and_then(|s| s.parse::<bool>().ok())
+                {
                     let mut accounts = self.accounts.lock().unwrap();
                     if let Some(account) = accounts.iter_mut().find(|a| a.username == username) {
                         account.auto_relaunch = val;
@@ -232,7 +236,9 @@ impl NexusServer {
                 }
             }
             "SetPlaceId" => {
-                if let Some(pid) = payload.get("Content").and_then(|s| s.parse::<i64>().ok()) {
+                if let Some(pid) =
+                    payload_text(&payload, "Content").and_then(|s| s.parse::<i64>().ok())
+                {
                     let mut accounts = self.accounts.lock().unwrap();
                     if let Some(account) = accounts.iter_mut().find(|a| a.username == username) {
                         account.place_id = pid;
@@ -242,34 +248,35 @@ impl NexusServer {
                 }
             }
             "SetJobId" => {
-                if let Some(content) = payload.get("Content") {
+                if let Some(content) = payload_text(&payload, "Content") {
                     let mut accounts = self.accounts.lock().unwrap();
                     if let Some(account) = accounts.iter_mut().find(|a| a.username == username) {
-                        account.job_id = content.clone();
+                        account.job_id = content;
                     }
                     drop(accounts);
                     self.save_accounts();
                 }
             }
             "Echo" => {
-                if let Some(content) = payload.get("Content") {
-                    self.send_to_all(content);
+                if let Some(content) = payload_text(&payload, "Content") {
+                    self.send_to_all(&content);
                 }
             }
             "CreateButton" | "CreateTextBox" | "CreateNumeric" | "CreateLabel" => {
-                let name = match payload.get("Name") {
-                    Some(n) => n.clone(),
+                let name = match payload_text(&payload, "Name") {
+                    Some(n) => n,
                     None => return,
                 };
-                let content = payload.get("Content").cloned().unwrap_or_default();
+                let content = payload_text(&payload, "Content").unwrap_or_default();
 
                 let mut elements = self.custom_elements.lock().unwrap();
                 if elements.iter().any(|e| e.name == name) {
                     return;
                 }
 
-                let size = payload.get("Size").and_then(|s| {
-                    let parts: Vec<i32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+                let size = payload_text(&payload, "Size").and_then(|s| {
+                    let parts: Vec<i32> =
+                        s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
                     if parts.len() == 2 {
                         Some((parts[0], parts[1]))
                     } else {
@@ -277,8 +284,9 @@ impl NexusServer {
                     }
                 });
 
-                let margin = payload.get("Margin").and_then(|s| {
-                    let parts: Vec<i32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+                let margin = payload_text(&payload, "Margin").and_then(|s| {
+                    let parts: Vec<i32> =
+                        s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
                     if parts.len() == 4 {
                         Some((parts[0], parts[1], parts[2], parts[3]))
                     } else {
@@ -286,10 +294,9 @@ impl NexusServer {
                     }
                 });
 
-                let decimal_places = payload
-                    .get("DecimalPlaces")
-                    .and_then(|s| s.parse().ok());
-                let increment = payload.get("Increment").cloned();
+                let decimal_places =
+                    payload_text(&payload, "DecimalPlaces").and_then(|s| s.parse().ok());
+                let increment = payload_text(&payload, "Increment");
 
                 let element = CustomElement {
                     name: name.clone(),
@@ -412,6 +419,17 @@ impl NexusServer {
         for account in accounts.iter_mut() {
             account.status = AccountStatus::Offline;
             account.client_can_receive = false;
+        }
+    }
+}
+
+fn payload_text(payload: &HashMap<String, serde_json::Value>, key: &str) -> Option<String> {
+    match payload.get(key)? {
+        serde_json::Value::String(value) => Some(value.clone()),
+        serde_json::Value::Number(value) => Some(value.to_string()),
+        serde_json::Value::Bool(value) => Some(value.to_string()),
+        serde_json::Value::Null | serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+            None
         }
     }
 }

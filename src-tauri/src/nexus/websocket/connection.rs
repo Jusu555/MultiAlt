@@ -9,15 +9,6 @@ async fn handle_connection(
         stream,
         |req: &tokio_tungstenite::tungstenite::handshake::server::Request,
          res: tokio_tungstenite::tungstenite::handshake::server::Response| {
-            // Web pages can open ws://127.0.0.1 too; browsers always send an
-            // Origin header, Roblox executors connecting from Lua don't.
-            if req.headers().contains_key("origin") {
-                let reject = tokio_tungstenite::tungstenite::http::Response::builder()
-                    .status(403)
-                    .body(Some("Connections from web pages are not allowed".to_string()))
-                    .unwrap_or_default();
-                return Err(reject);
-            }
             uri_path = req.uri().to_string();
             Ok(res)
         },
